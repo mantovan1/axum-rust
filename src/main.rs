@@ -11,6 +11,11 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
+use http::{
+    Method,
+    header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE, AUTHORIZATION, ACCEPT}
+};
+use tower_http::cors::{Any, CorsLayer};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -32,11 +37,18 @@ async fn main() {
         .expect("Failed to create pool");
 
     let shared_pool = Arc::new(Mutex::new(pool));
+    let cors = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_origin(Any)
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE, ACCEPT, ACCESS_CONTROL_ALLOW_ORIGIN]);
     let app : Router = Router::new()
         .route("/user", get(list_users))
         .route("/user", post(create_user))
         .route("/user/roles/:id", get(list_user_roles))
         .route("/user/auth", post(login))
+        .route("/blog", post(create_blog))
+        .route("/blog", get(list_blogs))
+        .layer(cors)
         .layer(Extension(shared_pool));    
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -160,7 +172,7 @@ pub async fn login(
 
     let verify_result = bcrypt::verify(&body.password, &user.password);
 
-    if (!verify_result) {
+    if !verify_result {
         return Err((
             StatusCode::UNAUTHORIZED,
             Json(json!({"status": "error", "message": "Invalid login credentials"})),
@@ -315,4 +327,96 @@ where
 
         Ok(token_data.claims)
     }
+}
+
+//blog
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateBlogSchema {
+    title: String,
+    slug: String,
+    content: String,
+}
+
+#[derive(Serialize, FromRow, Deserialize, Debug)]
+pub struct Blog {
+    id: i64,
+    title: String,
+    slug: String,
+    content: String,
+}
+
+pub async fn create_blog(
+    claims: Claims,
+    Extension(pool): Extension<Arc<Mutex<SqlitePool>>>,
+    Json(body): Json<CreateBlogSchema>
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if !claims.roles.contains(&String::from("Admin")) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"status": "error","message": format!("{:?}", "err")})),
+        ));
+    }
+
+    let pool = pool.lock().await;
+    let query_result = sqlx::query(r#"INSERT INTO blogs (title, slug, content) VALUES (?, ?, ?)"#)
+        .bind(body.title.to_string())
+        .bind(body.slug.to_string())
+        .bind(body.content.to_string())
+        .execute(&*pool)
+        .await
+        .map_err(|err: sqlx::Error| err.to_string());
+    
+    // Duplicate err check
+    if let Err(err) = query_result {
+        if err.contains("Duplicate entry") {
+            let error_response = serde_json::json!({
+                "status": "error",
+                "message": "Blog already exists",
+            });
+            return Err((StatusCode::CONFLICT, Json(error_response)));
+        }
+
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"status": "error","message": format!("{:?}", err)})),
+        ));
+    }
+
+    // Get insereted note by ID
+    let blog = sqlx::query_as!(Blog, r#"SELECT * FROM blogs WHERE slug = ?"#, body.slug)
+        .fetch_one(&*pool)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"status": "error","message": format!("{:?}", e)})),
+            )
+        })?;
+
+    let blog_response = serde_json::json!({
+            "status": "success",
+            "data": serde_json::json!({
+                "blog": &blog
+        })
+    });
+
+    Ok(Json(blog_response))
+}
+
+pub async fn list_blogs(
+    Extension(pool): Extension<Arc<Mutex<SqlitePool>>>
+) -> Json<Vec<Blog>> {
+    let pool = pool.lock().await;
+    let blogs = sqlx::query_as::<_, Blog>(
+        r#"
+        SELECT *
+        FROM blogs
+        "#
+    )
+    .fetch_all(&*pool)
+    .await
+    .unwrap();
+
+    Json(blogs)
 }
