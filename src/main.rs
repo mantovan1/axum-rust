@@ -1,17 +1,26 @@
 use axum::{
+    async_trait,
     routing::{get, post},
-    http::StatusCode,
+    http::{request::Parts, StatusCode},
     Extension, Json, Router,
-    extract::Path,
-    response::{IntoResponse, Response}
+    extract::{FromRequestParts, Path},
+    response::{IntoResponse, Response},
+    RequestPartsExt
+};
+use axum_extra::{
+    headers::{authorization::Bearer, Authorization},
+    TypedHeader,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::Mutex;
-use std::sync::Arc;
-use sqlx::{sqlite::SqlitePool, FromRow};
+use std::{
+    fmt::Display,
+    sync::Arc
+};
 
-use jsonwebtoken::{encode, Validation, Header, EncodingKey};
+use sqlx::{sqlite::SqlitePool, FromRow};
+use jsonwebtoken::{decode, encode, Validation, Header, DecodingKey, EncodingKey};
 use chrono::Utc;
 use pwhash::bcrypt;
 
@@ -56,7 +65,7 @@ async fn list_users(
 async fn list_user_roles(
     Extension(pool): Extension<Arc<Mutex<SqlitePool>>>,
     Path(id): Path<i64>
-) -> Result<Json<Vec<Roles>>, StatusCode> {
+) -> Result<Json<Vec<String>>, StatusCode> {
     let pool = pool.lock().await;
    
     let roles = sqlx::query_as::<_, Roles>(
@@ -73,13 +82,21 @@ async fn list_user_roles(
     .await
     .unwrap();
 
-    Ok(Json(roles))
+    let names: Vec<String> = roles.into_iter().map(|role| role.name).collect();
+    Ok(Json(names))
 }
 
 pub async fn create_user(
+    claims: Claims,
     Extension(pool): Extension<Arc<Mutex<SqlitePool>>>,
     Json(body): Json<CreateUserSchema>
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    if !claims.roles.contains(&String::from("Admin")) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"status": "error","message": format!("{:?}", "err")})),
+        ));
+    }
     let pool = pool.lock().await;
     let password = hash(&body.password).expect("something went wrong");
     let query_result = sqlx::query(r#"INSERT INTO users (name, email, password) VALUES (?, ?, ?)"#)
@@ -150,7 +167,23 @@ pub async fn login(
         ));
     }
 
-    let token = generate_jwt(&user).await.map_err(|e| {
+    let roles = sqlx::query_as::<_, Roles>(
+        r#"
+        SELECT roles.id, roles.name
+        FROM roles
+        JOIN user_roles
+        ON user_roles.role_id = roles.id
+        WHERE user_roles.user_id = ?
+        "#
+    )
+    .bind(&user.id)
+    .fetch_all(&*pool)
+    .await
+    .unwrap();
+
+    let role_names: Vec<String> = vec![roles.into_iter().map(|role| role.name).collect()];
+
+    let token = generate_jwt(&user, &role_names).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"status": "error","message": format!("Token generation error: {:?}", e)})),
@@ -205,6 +238,7 @@ struct UserLoginSchema {
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
     sub: String,
+    roles: Vec<String>,
     iss: String,
     exp: usize,
 }
@@ -213,9 +247,10 @@ fn hash(password: &str) -> Result<String, pwhash::error::Error> {
     bcrypt::hash(password)
 }
 
-async fn generate_jwt(user: &User) -> Result<String, jsonwebtoken::errors::Error> {
+async fn generate_jwt(user: &User, role_names: &Vec<String>) -> Result<String, jsonwebtoken::errors::Error> {
     let claims = Claims {
         sub: user.email.clone(),
+        roles: role_names.clone(),
         iss: "issuer".to_string(),
         exp: (Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
     };
@@ -252,5 +287,32 @@ impl IntoResponse for AuthError {
             "error": error_message,
         }));
         (status, body).into_response()
+    }
+}
+
+impl Display for Claims {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Email: {}\nCompany: {}", self.sub, self.iss)
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for Claims
+where
+    S: Send + Sync,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // Extract the token from the authorization header
+        let TypedHeader(Authorization(bearer)) = parts
+            .extract::<TypedHeader<Authorization<Bearer>>>()
+            .await
+            .map_err(|_| AuthError::InvalidToken)?;
+        // Decode the user data
+        let token_data = decode::<Claims>(bearer.token(), &DecodingKey::from_secret("secret".as_ref()), &Validation::default())
+            .map_err(|_| AuthError::InvalidToken)?;
+
+        Ok(token_data.claims)
     }
 }

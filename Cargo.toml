@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 axum = "0.7.5"
+axum-extra = { version = "0.9.3", features = ["typed-header"] }
 chrono = "0.4.38"
 jsonwebtoken = "9.3.0"
 pwhash = "1.0.0"
