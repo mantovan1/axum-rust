@@ -6,6 +6,7 @@ pub struct CreateBlogSchema {
     pub title: String,
     pub slug: String,
     pub content: String,
+    pub thumbnail: String
 }
 
 #[derive(Serialize, FromRow, Deserialize, Debug)]
@@ -14,4 +15,5 @@ pub struct Blog {
     pub title: String,
     pub slug: String,
     pub content: String,
+    pub thumbnail: String
 }

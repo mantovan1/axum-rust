@@ -4,23 +4,22 @@ use tokio::sync::Mutex;
 use std::sync::Arc;
 use serde_json::json;
 
-use crate::models::{
-    user_schema::{CreateUserSchema, User, to_user_response},
-    claims_schema::Claims
+use crate::{
+    modules::{
+        hash_usecase::hash,
+        rand_usecase::generate_random_string
+    },
+    models::{
+        user_schema::{CreateUserSchema, User, UserVerificationList, UserRole, to_user_response},
+    }
 };
-use crate::modules::hash_usecase::hash;
 
 pub async fn create_user(
-    claims: Claims,
     Extension(pool): Extension<Arc<Mutex<SqlitePool>>>,
+    Extension(user_verification_list): Extension<Arc<Mutex<UserVerificationList>>>,
     Json(body): Json<CreateUserSchema>
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    if !claims.roles.contains(&String::from("Admin")) {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"status": "error","message": format!("{:?}", "err")})),
-        ));
-    }
+    let mut user_verification_list = user_verification_list.lock().await;
     let pool = pool.lock().await;
     let password = hash(&body.password).expect("something went wrong");
     let query_result = sqlx::query(r#"INSERT INTO users (name, email, password) VALUES (?, ?, ?)"#)
@@ -56,12 +55,74 @@ pub async fn create_user(
             )
         })?;
 
+    let rand = generate_random_string(10);
+    user_verification_list.add_verification(rand.clone(), user.id);
+
     let user_response = json!({
         "status": "success",
         "data": {
-            "user": to_user_response(&user)
+            "user": to_user_response(&user),
+            "rand": &rand
         }
     });
 
     Ok(Json(user_response))
+}
+
+pub async fn verify(
+    Path(rand): Path<String>,
+    Extension(user_verification_list): Extension<Arc<Mutex<UserVerificationList>>>,
+    Extension(pool): Extension<Arc<Mutex<SqlitePool>>>,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let user_verification_list = user_verification_list.lock().await;
+    let id = user_verification_list.get_id(&rand);
+
+    if id.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"status": "error", "message": "Verification token not found"})),
+        ));
+    }
+    let id = id.unwrap();
+
+    let pool = pool.lock().await;
+    let query_result = sqlx::query(r#"INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)"#)
+        .bind(id)
+        .bind(2)
+        .execute(&*pool)
+        .await
+        .map_err(|err: sqlx::Error| err.to_string());
+
+    // Duplicate err check
+    if let Err(err) = query_result {
+        if err.contains("Duplicate entry") {
+            let error_response = serde_json::json!({
+                "status": "error",
+                "message": "User role already exists",
+            });
+            return Err((StatusCode::CONFLICT, Json(error_response)));
+        }
+
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"status": "error","message": format!("{:?}", err)})),
+        ));
+    }
+
+    // Get inserted note by ID
+    let user_role = sqlx::query_as!(
+        UserRole,
+        r#"SELECT * FROM user_roles WHERE user_id = ?"#,
+        id
+    )
+    .fetch_one(&*pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"status": "error","message": format!("{:?}", e)})),
+        )
+    })?;
+
+    Ok(Json(user_role))
 }

@@ -22,10 +22,11 @@ pub async fn create_blog(
     }
 
     let pool = pool.lock().await;
-    let query_result = sqlx::query(r#"INSERT INTO blogs (title, slug, content) VALUES (?, ?, ?)"#)
+    let query_result = sqlx::query(r#"INSERT INTO blogs (title, slug, content, thumbnail) VALUES (?, ?, ?, ?)"#)
         .bind(body.title.to_string())
         .bind(body.slug.to_string())
         .bind(body.content.to_string())
+        .bind(body.thumbnail.to_string())
         .execute(&*pool)
         .await
         .map_err(|err: sqlx::Error| err.to_string());
@@ -73,7 +74,7 @@ pub async fn find_blog(
 ) -> Json<Blog> {
     let pool = pool.lock().await;
     
-    let blog = sqlx::query_as!(Blog, r#"SELECT id, title, slug, content FROM blogs WHERE slug = ?"#, slug)
+    let blog = sqlx::query_as!(Blog, r#"SELECT id, title, slug, content, thumbnail FROM blogs WHERE slug = ?"#, slug)
     .fetch_one(&*pool)
     .await
     .expect("not found");   

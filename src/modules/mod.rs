@@ -4,3 +4,4 @@ pub mod user_controller;
 
 pub mod jwt_usecase;
 pub mod hash_usecase;
+pub mod rand_usecase;

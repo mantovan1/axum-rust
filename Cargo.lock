@@ -1903,6 +1903,7 @@ dependencies = [
  "http 1.1.0",
  "jsonwebtoken",
  "pwhash",
+ "rand",
  "serde",
  "serde_json",
  "sqlx",
