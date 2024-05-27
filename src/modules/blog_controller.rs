@@ -74,7 +74,7 @@ pub async fn find_blog(
 ) -> Json<Blog> {
     let pool = pool.lock().await;
     
-    let blog = sqlx::query_as!(Blog, r#"SELECT id, title, slug, content, thumbnail FROM blogs WHERE slug = ?"#, slug)
+    let blog = sqlx::query_as!(Blog, r#"SELECT * FROM blogs WHERE slug = ?"#, slug)
     .fetch_one(&*pool)
     .await
     .expect("not found");   

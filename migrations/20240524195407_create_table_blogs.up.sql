@@ -4,5 +4,6 @@ create table blogs (
     slug text not null unique,
     title text not null,
     content text not null,
-    thumbnail text not null
+    thumbnail text not null,
+    created_at timestamp not null default CURRENT_TIMESTAMP
 ) 
