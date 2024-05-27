@@ -8,8 +8,11 @@ axum = "0.7.5"
 axum-extra = { version = "0.9.3", features = ["typed-header"] }
 axum-util = "0.2.2"
 chrono = "0.4.38"
+dotenv = "0.15.0"
 http = "1.1.0"
 jsonwebtoken = "9.3.0"
+mail-builder = "0.3.1"
+mail-send = "0.4.7"
 pwhash = "1.0.0"
 rand = "0.8.5"
 serde = { version = "1.0.202", features = ["derive"] }

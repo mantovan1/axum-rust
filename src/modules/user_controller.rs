@@ -1,8 +1,11 @@
 use sqlx::sqlite::SqlitePool;
 use axum::{Extension, Json, http::StatusCode, extract::Path, response::IntoResponse};
 use tokio::sync::Mutex;
-use std::sync::Arc;
+use std::{env, sync::Arc};
 use serde_json::json;
+use mail_send::SmtpClientBuilder;
+use mail_builder::MessageBuilder;
+use dotenv::dotenv;
 
 use crate::{
     modules::{
@@ -57,6 +60,31 @@ pub async fn create_user(
 
     let rand = generate_random_string(10);
     user_verification_list.add_verification(rand.clone(), user.id);
+    dotenv().ok();
+    let email = env::var("EMAIL_USER").expect("not set");
+    let pass = env::var("EMAIL_PASS").expect("not set");
+    
+    let message = MessageBuilder::new()
+    .from(("Blog", &email[..]))
+    .to(vec![
+        ("User", &user.email[..])  // Convert user.email to &str
+    ])
+    .subject("Hi!")
+    .html_body(format!("<a href=\"http://localhost:3000/verify/{}\">verificar</a>", rand))
+    .text_body("Hello world!");
+
+    // Connect to the SMTP submissions port, upgrade to TLS and
+    // authenticate using the provided credentials.
+
+    SmtpClientBuilder::new("smtp.umbler.com", 587)
+        .implicit_tls(false)
+        .credentials((&email[..], &pass[..]))
+        .connect()
+        .await
+        .unwrap()
+        .send(message)
+        .await
+        .unwrap();
 
     let user_response = json!({
         "status": "success",
