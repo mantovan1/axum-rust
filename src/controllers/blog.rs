@@ -3,7 +3,6 @@ use axum::{Extension, Json, http::StatusCode, extract::Path, response::IntoRespo
 use tokio::sync::Mutex;
 use std::sync::Arc;
 use serde_json::json;
-use serde_xml_rs::to_string;
 
 use crate::schemas::{
     blog::{Blog, CreateBlogSchema},
@@ -99,64 +98,4 @@ pub async fn list_blogs(
     .unwrap();
 
     Json(blogs)
-}
-
-pub async fn generate_rss(
-    Extension(pool): Extension<Arc<Mutex<SqlitePool>>>
-) -> String {
-    let pool = pool.lock().await;
-    let blogs = sqlx::query_as::<_, Blog>(
-        r#"
-        SELECT *
-        FROM blogs
-        ORDER BY created_at DESC
-        "#
-    )
-    .fetch_all(&*pool)
-    .await
-    .unwrap();
-
-    let items = blogs.into_iter().map(|post| {
-        Item {
-            title: post.title,
-            description: post.content,
-        }
-    }).collect();
-
-    let channel = Channel {
-        title: "Meu Blog".to_string(),
-        link: "http://meublog.com".to_string(),
-        description: "Descrição do meu blog".to_string(),
-        item: items,
-    };
-
-    let rss = Rss {
-        version: "2.0".to_string(),
-        channel,
-    };
-
-    to_string(&rss).unwrap()
-}
-
-use serde::Serialize;
-use chrono::NaiveDateTime;
-
-#[derive(Serialize)]
-struct Rss {
-    version: String,
-    channel: Channel,
-}
-
-#[derive(Serialize)]
-struct Channel {
-    title: String,
-    link: String,
-    description: String,
-    item: Vec<Item>,
-}
-
-#[derive(Serialize)]
-struct Item {
-    title: String,
-    description: String
 }
