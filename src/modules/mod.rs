@@ -1,7 +1,3 @@
-pub mod auth_controller;
-pub mod blog_controller;
-pub mod user_controller;
-
-pub mod jwt_usecase;
-pub mod hash_usecase;
-pub mod rand_usecase;
+pub mod jwt;
+pub mod hash;
+pub mod rand;

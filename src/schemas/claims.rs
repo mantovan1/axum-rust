@@ -12,7 +12,7 @@ use axum_extra::{
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 
-use crate::models::auth_error_schema::AuthError;
+use crate::schemas::auth::AuthError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {

@@ -1,8 +1,8 @@
 use axum::{Router, routing::{get, post}};
-use crate::modules::{
-    auth_controller::auth,
-    blog_controller::{create_blog, list_blogs, find_blog},
-    user_controller::{create_user, verify}
+use crate::controllers::{
+    auth::auth,
+    blog::{create_blog, list_blogs, find_blog, generate_rss},
+    user::{create_user, verify}
 };
 
 pub fn create_router() -> Router {
@@ -12,6 +12,7 @@ pub fn create_router() -> Router {
         .route("/blog", post(create_blog))
         .route("/blog", get(list_blogs))
         .route("/blog/:slug", get(find_blog))
+        .route("/rss", get(generate_rss))
         .route("/user", post(create_user));
     app
 }

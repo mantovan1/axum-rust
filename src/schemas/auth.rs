@@ -1,9 +1,16 @@
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
     http::StatusCode,
     Json,
     response::{IntoResponse, Response},
 };
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct AuthSchema {
+    pub email: String,
+    pub password: String
+}
 
 #[derive(Debug)]
 pub enum AuthError {

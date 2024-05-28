@@ -5,11 +5,11 @@ use std::sync::Arc;
 use serde_json::json;
 use pwhash::bcrypt;
 
-use crate::models::{
-    auth_schema::AuthSchema,
-    user_schema::{User, Roles, to_user_response}
+use crate::schemas::{
+    auth::AuthSchema,
+    user::{User, Roles, to_user_response}
 };
-use crate::modules::jwt_usecase::generate_jwt;
+use crate::modules::jwt::generate_jwt;
 
 pub async fn auth(
     Extension(pool): Extension<Arc<Mutex<SqlitePool>>>,

@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use sqlx::sqlite::SqlitePool;
 use rust_api::{
     infra::{cors, routes},
-    models::user_schema::UserVerificationList
+    schemas::user::UserVerificationList
 };
 
 #[tokio::main]

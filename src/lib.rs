@@ -1,3 +1,4 @@
 pub mod infra;
-pub mod models;
+pub mod schemas;
 pub mod modules;
+pub mod controllers;

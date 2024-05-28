@@ -1,8 +1,8 @@
 use chrono::Utc;
 use jsonwebtoken::{decode, encode, Validation, Header, DecodingKey, EncodingKey};
-use crate::models::{
-    user_schema::User,
-    claims_schema::Claims
+use crate::schemas::{
+    user::User,
+    claims::Claims
 };
 
 pub async fn generate_jwt(user: &User, role_names: &Vec<String>) -> Result<String, jsonwebtoken::errors::Error> {

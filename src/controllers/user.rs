@@ -9,11 +9,11 @@ use dotenv::dotenv;
 
 use crate::{
     modules::{
-        hash_usecase::hash,
-        rand_usecase::generate_random_string
+        hash::hash,
+        rand::generate_random_string
     },
-    models::{
-        user_schema::{CreateUserSchema, User, UserVerificationList, UserRole, to_user_response},
+    schemas::{
+        user::{CreateUserSchema, User, UserVerificationList, UserRole, to_user_response},
     }
 };
 
